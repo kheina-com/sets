@@ -1,0 +1,2 @@
+kh-common[aerospike,auth,logging,sql]~=0.7.1
+fuzzly~=0.0.5
