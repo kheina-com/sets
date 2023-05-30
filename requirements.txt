@@ -1,2 +1,2 @@
+git+https://github.com/kheina-com/fuzzly.git@0.0.5
 kh-common[aerospike,auth,logging,sql]~=0.7.1
-fuzzly~=0.0.5

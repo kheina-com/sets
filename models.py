@@ -1,8 +1,9 @@
 from typing import Optional
 
+from fuzzly.models.post import PostId
 from fuzzly.models.set import SetId
 from fuzzly.models.user import UserPrivacy
-from pydantic import BaseModel, conlist
+from pydantic import BaseModel, conint, conlist
 
 
 class CreateSetRequest(BaseModel) :
@@ -17,3 +18,9 @@ class UpdateSetRequest(BaseModel) :
 	title: Optional[str]
 	description: Optional[str]
 	privacy: Optional[UserPrivacy]
+
+
+class AddPostToSetRequest(BaseModel) :
+	post_id: PostId
+	set_id: SetId
+	index: conint(ge=0)

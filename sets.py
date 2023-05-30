@@ -2,9 +2,9 @@ from asyncio import Task, ensure_future, wait
 from typing import List, Optional, Tuple, Union
 
 from fuzzly.internal import InternalClient
-from fuzzly.models.internal import InternalSet, SetKVS
+from fuzzly.models.internal import InternalPost, InternalSet, SetKVS
 from fuzzly.models.post import PostId
-from fuzzly.models.set import PostSet, Set, SetId, PostNeighbors
+from fuzzly.models.set import PostNeighbors, PostSet, Set, SetId
 from fuzzly.models.user import UserPrivacy
 from kh_common.auth import KhUser, Scope
 from kh_common.caching import AerospikeCache, ArgsCache
@@ -12,8 +12,8 @@ from kh_common.caching.key_value_store import KeyValueStore
 from kh_common.config.credentials import fuzzly_client_token
 from kh_common.datetime import datetime
 from kh_common.exceptions.http_error import BadRequest, HttpErrorHandler, NotFound
-from kh_common.sql import SqlInterface
 from kh_common.hashing import Hashable
+from kh_common.sql import SqlInterface
 
 from models import UpdateSetRequest
 
@@ -35,11 +35,11 @@ CREATE TABLE kheina.public.set_post (
 	index INT NOT NULL,
 	PRIMARY KEY (set_id, post_id),
 	UNIQUE (post_id, set_id),
-	UNIQUE (set_id, index)
+	UNIQUE (set_id, index) INCLUDE (post_id)
 );
 """
 
-set_not_found_errstr: str = 'no data was found for the provided set id: {set_id}.'
+set_not_found_err: str = 'no data was found for the provided set id: {set_id}.'
 
 KVS: KeyValueStore = KeyValueStore('kheina', 'sets')
 
@@ -100,6 +100,7 @@ class Sets(SqlInterface, Hashable) :
 		iset: InternalSet = InternalSet(
 			set_id=set_id.int(),
 			owner=user.user_id,
+			count=0,
 			title=title,
 			description=description,
 			privacy=privacy,
@@ -113,22 +114,40 @@ class Sets(SqlInterface, Hashable) :
 	@AerospikeCache('kheina', 'sets', '{set_id}', _kvs=SetKVS)
 	async def _get_set(self: 'Sets', set_id: SetId) -> InternalSet :
 		data: Tuple[int, Optional[str], Optional[str], int, datetime, datetime] = await self.query_async("""
+			WITH f AS (
+				SELECT post_id AS first, index
+				FROM kheina.public.set_post
+				WHERE set_id = %s
+				ORDER BY set_post.index ASCENDING
+				LIMIT 1
+			), l AS (
+				SELECT post_id AS last, index
+				FROM kheina.public.set_post
+				WHERE set_id = %s
+				ORDER BY set_post.index DESCENDING
+				LIMIT 1
+			)
 			SELECT
 				owner,
 				title,
 				description,
 				privacy,
 				created,
-				updated
+				updated,
+				f.first,
+				l.last,
+				l.index
 			FROM kheina.public.sets
+				JOIN f
+				JOIN l
 			WHERE set_id = %s;
 			""",
-			(set_id.int(),),
+			(set_id.int(), set_id.int()),
 			fetch_one=True,
 		)
 
 		if not data: 
-			raise NotFound(set_not_found_errstr.format(set_id=set_id))
+			raise NotFound(set_not_found_err.format(set_id=set_id))
 
 		return InternalSet(
 			set_id=set_id,
@@ -138,6 +157,9 @@ class Sets(SqlInterface, Hashable) :
 			privacy=await self._id_to_privacy(data[3]),
 			created=data[4],
 			updated=data[5],
+			first=data[6],
+			last=data[7],
+			count=data[8] + 1,  # set indices are 0-indexed, so add one
 		)
 
 
@@ -148,7 +170,7 @@ class Sets(SqlInterface, Hashable) :
 		if await iset.authorized(client, user) :
 			return await iset.set(client, user)
 
-		raise NotFound(set_not_found_errstr.format(set_id=set_id))
+		raise NotFound(set_not_found_err.format(set_id=set_id))
 
 
 	@HttpErrorHandler('updating a set')
@@ -156,7 +178,7 @@ class Sets(SqlInterface, Hashable) :
 		iset: InternalSet = await self._get_set(set_id)
 
 		if not Sets._verify_authorized(user, iset) :
-			raise NotFound(set_not_found_errstr.format(set_id=set_id))
+			raise NotFound(set_not_found_err.format(set_id=set_id))
 
 		params: List[Union[str, UserPrivacy, None]] = []
 		bad_mask: List[str] = []
@@ -214,7 +236,7 @@ class Sets(SqlInterface, Hashable) :
 		iset: InternalSet = await self._get_set(set_id)
 
 		if not Sets._verify_authorized(user, iset) :
-			raise NotFound(set_not_found_errstr.format(set_id=set_id))
+			raise NotFound(set_not_found_err.format(set_id=set_id))
 
 		await self.query_async("""
 			DELETE FROM kheina.public.set_post
@@ -229,23 +251,134 @@ class Sets(SqlInterface, Hashable) :
 		await SetKVS.remove_async(set_id)
 
 
-	async def get_post_sets(self: 'Sets', user: KhUser, post_id: PostId) -> List[PostSet] :
-		data: List[Tuple[int, int, Optional[str], Optional[str], int, datetime, datetime, int]] = await self.query_async("""
-			SELECT
-				sets.set_id,
-				sets.owner,
-				sets.title,
-				sets.description,
-				sets.privacy,
-				sets.created,
-				sets.updated,
-				set_post.index
-			FROM kheina.public.set_post
-				INNER JOIN kheina.public.sets
-					ON sets.set_id = set_post.set_id
-			WHERE set_post.post_id = %s;
+	async def add_post_to_set(self: 'Sets', user: KhUser, post_id: PostId, set_id: SetId, index: int) -> None :
+		iset_task: Task[InternalSet] = ensure_future(self._get_set(set_id))
+		ipost: InternalPost = await client.post(post_id)
+
+		if not await ipost.authorized(client, user) :
+			raise NotFound(f'no data was found for the provided post id: {post_id}.')
+
+		iset: InternalSet = await iset_task
+
+		if not await iset.authorized(client, user) :
+			raise NotFound(set_not_found_err.format(set_id=set_id))
+
+		await self.query_async("""
+			WITH i AS (
+				SELECT
+					least(%s, count(1)) AS index
+				FROM kheina.public.set_post
+					WHERE set_id = %s
+			), (
+				UPDATE kheina.public.set_post
+					index = set_post.index + 1
+				WHERE set_post.set_id = %s
+					AND set_post.index >= i.index
+			)
+			INSERT INTO kheina.public.set_post
+			(set_id, post_id, index)
+			VALUES
+			(%s, %s, i.index);
 			""",
-			(post_id.int(),),
+			(
+				index, set_id.int(),
+				set_id.int(),
+				set_id.int(), post_id.int(),
+			),
+			commit=True,
+		)
+
+		iset.count += 1
+		ensure_future(SetKVS.put_async(set_id, iset))
+
+
+	async def remove_post_from_set(self: 'Sets', user: KhUser, post_id: PostId, set_id: SetId) -> None :
+		iset_task: Task[InternalSet] = ensure_future(self._get_set(set_id))
+		ipost: InternalPost = await client.post(post_id)
+
+		if not await ipost.authorized(client, user) :
+			raise NotFound(f'no data was found for the provided post id: {post_id}.')
+
+		iset: InternalSet = await iset_task
+
+		if not await iset.authorized(client, user) :
+			raise NotFound(set_not_found_err.format(set_id=set_id))
+
+		await self.query_async("""
+			WITH deleted AS (
+				DELETE FROM kheina.public.set_post
+				WHERE set_id = %s
+					AND post_id = %s
+				RETURNING index
+			)
+			UPDATE kheina.public.set_post
+				index = set_post.index - 1
+			WHERE set_post.set_id = %s
+				AND set_post.index >= deleted.index;
+			""",
+			(
+				set_id.int(), post_id.int(),
+				set_id.int(),
+			),
+			commit=True,
+		)
+
+		iset.count -= 1
+		ensure_future(SetKVS.put_async(set_id, iset))
+
+
+	async def get_post_sets(self: 'Sets', user: KhUser, post_id: PostId) -> List[PostSet] :
+		neighbor_range: int = 3  # const
+		data: List[Tuple[int, int, Optional[str], Optional[str], int, datetime, datetime, int]] = await self.query_async("""
+			WITH post_sets AS (
+				SELECT
+					sets.set_id,
+					sets.owner,
+					sets.title,
+					sets.description,
+					sets.privacy,
+					sets.created,
+					sets.updated,
+					set_post.index
+				FROM kheina.public.set_post
+					INNER JOIN kheina.public.sets
+						ON sets.set_id = set_post.set_id
+				WHERE set_post.post_id = %s
+			)
+			SELECT
+				post_sets.set_id,
+				post_sets.owner,
+				post_sets.title,
+				post_sets.description,
+				post_sets.privacy,
+				post_sets.created,
+				post_sets.updated,
+				set_post.index,
+				posts.post_id,
+				posts.title,
+				posts.description,
+				posts.rating,
+				posts.parent,
+				posts.created_on,
+				posts.updated_on,
+				posts.filename,
+				posts.media_type_id,
+				posts.width,
+				posts.height,
+				posts.uploader,
+				posts.privacy_id
+			FROM post_sets
+				INNER JOIN kheina.public.set_post
+					ON set_post.set_id = post_sets.set_id
+					AND set_post.index BETWEEN post_sets.index - %s AND post_sets.index + %s
+					AND set_post.index != post_sets.index
+				INNER JOIN kheina.public.posts
+					ON posts.post_id = set_post.post_id;
+			""",
+			(
+				post_id.int(),
+				neighbor_range, neighbor_range,
+			),
 			fetch_all=True,
 		)
 
@@ -260,7 +393,7 @@ class Sets(SqlInterface, Hashable) :
 					created=row[5],
 					updated=row[6],
 				),
-				row[7],  # post index in set
+				row[7],
 			)
 			for row in data
 		]
@@ -268,25 +401,6 @@ class Sets(SqlInterface, Hashable) :
 		allowed: List[Tuple[Task[Set], int]] = [
 			(ensure_future(iset.set(client, user)), index) for iset, index in isets if await iset.authorized(client, user)
 		]
-
-		# TODO: WHAT? first/last/before/after all need to be retrieved here. how the hell do I do that?
-		# data: List[Tuple[int, int, Optional[str], Optional[str], int, datetime, datetime]] = await self.query_async("""
-		# 	SELECT
-		# 		sets.set_id,
-		# 		sets.owner,
-		# 		sets.title,
-		# 		sets.description,
-		# 		sets.privacy,
-		# 		sets.created,
-		# 		sets.updated
-		# 	FROM kheina.public.set_post
-		# 		INNER JOIN kheina.public.sets
-		# 			ON sets.set_id = set_post.set_id
-		# 	WHERE set_post.post_id = %s;
-		# 	""",
-		# 	tuple(iset.set_id for iset, ind in allowed),
-		# 	fetch_all=True,
-		# )
 
 		sets: List[PostSet] = []
 
@@ -325,8 +439,11 @@ class Sets(SqlInterface, Hashable) :
 				sets.description,
 				sets.privacy,
 				sets.created,
-				sets.updated
+				sets.updated,
+				max(set_post.index)
 			FROM kheina.public.sets
+				INNER JOIN kheina.public.set_post
+					ON set_post.set_id = sets.set_id
 			WHERE sets.owner = %s;
 			""",
 			(owner,),
@@ -342,6 +459,7 @@ class Sets(SqlInterface, Hashable) :
 				privacy=await self._id_to_privacy(row[4]),
 				created=row[5],
 				updated=row[6],
+				count=row[7] + 1,  # set indices are 0-indexed, so add one
 			)
 			for row in data
 		]

@@ -1,13 +1,13 @@
-from typing import Dict, List, Optional, Union
+from typing import List
 
-from fuzzly.models.set import SetId, Set, PostSet
 from fuzzly.models.internal import InternalSet
 from fuzzly.models.post import PostId
+from fuzzly.models.set import PostSet, Set, SetId
+from kh_common.auth import Scope
 from kh_common.server import Request, ServerApp
 
-from models import CreateSetRequest, UpdateSetRequest
+from models import AddPostToSetRequest, CreateSetRequest, UpdateSetRequest
 from sets import Sets
-from kh_common.auth import Scope
 
 
 app = ServerApp(
@@ -43,11 +43,8 @@ async def i1Read(req: Request, set_id: SetId) -> InternalSet :
 
 ##################################################  PUBLIC  ##################################################
 
-@app.post('/v1/set', status_code=204)
+@app.put('/v1/set', status_code=204)
 async def v1Create(req: Request, body: CreateSetRequest) -> None :
-	"""
-	only auth required
-	"""
 	await req.user.authenticated()
 	return await sets.create_set(req.user, body.title, body.privacy, body.description)
 
@@ -72,6 +69,18 @@ async def v1Update(req: Request, set_id: SetId) -> None :
 @app.get('/v1/post/{post_id}')
 async def v1PostSets(req: Request, post_id: PostId) -> List[PostSet] :
 	return await sets.get_post_sets(req.user, PostId(post_id))
+
+
+@app.put('/v1/post', status_code=204)
+async def v1AddPost(req: Request, body: AddPostToSetRequest) -> None :
+	await req.user.authenticated()
+	return await sets.add_post_to_set(req.user, body.post_id, body.set_id, body.index)
+
+
+@app.delete('/v1/post/{post_id}/{set_id}', status_code=204)
+async def v1AddPost(req: Request, post_id: PostId, set_id: SetId) -> None :
+	await req.user.authenticated()
+	return await sets.remove_post_from_set(req.user, PostId(post_id), SetId(set_id))
 
 
 @app.get('/v1/user/{handle}')
