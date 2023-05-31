@@ -1,14 +1,14 @@
 from asyncio import Task, ensure_future, wait
-from typing import List, Optional, Tuple, Union
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple, Union
 
 from fuzzly.internal import InternalClient
-from fuzzly.models.internal import InternalPost, InternalSet, SetKVS
-from fuzzly.models.post import PostId
-from fuzzly.models.set import PostNeighbors, PostSet, Set, SetId
+from fuzzly.models.internal import InternalPost, InternalSet, SetKVS, InternalPosts
+from fuzzly.models.post import PostId, Privacy, Rating, MediaType, PostSize, Post
+from fuzzly.models.set import SetNeighbors, PostSet, Set, SetId
 from fuzzly.models.user import UserPrivacy
 from kh_common.auth import KhUser, Scope
 from kh_common.caching import AerospikeCache, ArgsCache
-from kh_common.caching.key_value_store import KeyValueStore
 from kh_common.config.credentials import fuzzly_client_token
 from kh_common.datetime import datetime
 from kh_common.exceptions.http_error import BadRequest, HttpErrorHandler, NotFound
@@ -51,7 +51,59 @@ class Sets(SqlInterface, Hashable) :
 
 
 	@ArgsCache(float('inf'))
-	async def _id_to_privacy(self: 'Sets', privacy_id: int) -> UserPrivacy :
+	async def _id_to_privacy(self: 'Sets', privacy_id: int) -> Privacy :
+		data: Tuple[str] = await self.query_async("""
+			SELECT
+				type
+			FROM kheina.public.privacy
+				where privacy.privacy_id = %s;
+			""",
+			(privacy_id,),
+			fetch_one=True,
+		)
+
+		return Privacy(data[0])
+
+
+	@ArgsCache(float('inf'))
+	async def _id_to_rating(self: 'Sets', rating_id: int) -> Rating :
+		data: Tuple[str] = await self.query_async("""
+			SELECT
+				rating
+			FROM kheina.public.ratings;
+				where ratings.rating_id = %s;
+			""",
+			(rating_id,),
+			fetch_one=True,
+		)
+
+		return Rating(data[0])
+
+
+	@ArgsCache(float('inf'))
+	async def _id_to_media_type(self: 'Sets', media_type_id: int) -> MediaType :
+		if media_type_id is None :
+			return None
+
+		data: Tuple[str, str] = await self.query_async("""
+			SELECT
+				file_type,
+				mime_type
+			FROM kheina.public.media_type;
+				where media_type.media_type_id = %s;
+			""",
+			(media_type_id,),
+			fetch_one=True,
+		)
+
+		return MediaType(
+			file_type = data[0],
+			mime_type = data[1],
+		)
+
+
+	@ArgsCache(float('inf'))
+	async def _id_to_set_privacy(self: 'Sets', privacy_id: int) -> UserPrivacy :
 		data: Tuple[str] = await self.query_async("""
 			SELECT
 				type
@@ -153,7 +205,7 @@ class Sets(SqlInterface, Hashable) :
 			owner=data[0],
 			title=data[1],
 			description=data[2],
-			privacy=await self._id_to_privacy(data[3]),
+			privacy=await self._id_to_set_privacy(data[3]),
 			created=data[4],
 			updated=data[5],
 			first=data[6],
@@ -331,7 +383,11 @@ class Sets(SqlInterface, Hashable) :
 
 	async def get_post_sets(self: 'Sets', user: KhUser, post_id: PostId) -> List[PostSet] :
 		neighbor_range: int = 3  # const
-		data: List[Tuple[int, int, Optional[str], Optional[str], int, datetime, datetime, int]] = await self.query_async("""
+		data: List[Tuple[
+			int, int, Optional[str], Optional[str], int, datetime, datetime,  # set
+			int, int,  # post index
+			int, Optional[str], Optional[str], int, int, datetime, datetime, Optional[str], int, int, int, int, int,  # posts
+		]] = await self.query_async("""
 			WITH post_sets AS (
 				SELECT
 					sets.set_id,
@@ -355,6 +411,7 @@ class Sets(SqlInterface, Hashable) :
 				post_sets.privacy,
 				post_sets.created,
 				post_sets.updated,
+				post_sets.index,
 				set_post.index,
 				posts.post_id,
 				posts.title,
@@ -384,46 +441,73 @@ class Sets(SqlInterface, Hashable) :
 			fetch_all=True,
 		)
 
-		isets: List[Tuple[InternalSet, int]] = [
-			(
-				InternalSet(
-					set_id=row[0],
-					owner=row[1],
-					title=row[2],
-					description=row[3],
-					privacy=await self._id_to_privacy(row[4]),
-					created=row[5],
-					updated=row[6],
-				),
-				row[7],
-			)
-			for row in data
-		]
+		# both tuples are formatted: index, object. set is the index of the parent post. posts is index of the neighbors
+		isets: List[Tuple[int, InternalSet]] = []
+		posts: Dict[int, List[Tuple[int, InternalPost]]] = defaultdict(lambda : [])
 
-		allowed: List[Tuple[Task[Set], int]] = [
-			(ensure_future(iset.set(client, user)), index) for iset, index in isets if await iset.authorized(client, user)
+		sets_made: set = set()
+		for row in data :
+			if row[0] not in sets_made :
+				sets_made.add(row[0])
+				isets.append((
+					row[7],
+					InternalSet(
+						set_id=row[0],
+						owner=row[1],
+						title=row[2],
+						description=row[3],
+						privacy=await self._id_to_set_privacy(row[4]),
+						created=row[5],
+						updated=row[6],
+					),
+				))
+
+			posts[row[0]].append((
+				row[8],
+				InternalPost(
+					post_id=row[9],
+					title=row[10],
+					description=row[11],
+					rating=self._id_to_rating(row[12]),
+					parent=row[13],
+					created=row[14],
+					updated=row[15],
+					filename=row[16],
+					media_type=self._id_to_media_type(row[17]),
+					size=PostSize(
+						width=row[18],
+						height=row[19],
+					) if row[18] and row[19] else None,
+					user_id=row[20],
+					privacy=self._id_to_privacy(row[21]),
+				),
+			))
+
+		# again, this is index, set task
+		allowed: List[Tuple[int, Task[Set]]] = [
+			(index, ensure_future(iset.set(client, user))) for index, iset in isets if await iset.authorized(client, user)
 		]
 
 		sets: List[PostSet] = []
 
-		for set_task, index in allowed :
-			set: Set = await set_task
+		for index, set_task in allowed :
+			s: Set = await set_task
+			before: Task[List[Post]] = ensure_future(InternalPosts(post_list=list(map(lambda x : x[1], sorted(filter(lambda x : x[0] < index, posts[s.set_id.int()]), key=lambda x : x[0], reverse=True)))).posts(client, user))
+			after: Task[List[Post]] = ensure_future(InternalPosts(post_list=list(map(lambda x : x[1], sorted(filter(lambda x : x[0] > index, posts[s.set_id.int()]), key=lambda x : x[0], reverse=False)))).posts(client, user))
 			sets.append(
 				PostSet(
-					set_id=set.set_id,
-					owner=set.owner,
-					title=set.title,
-					description=set.description,
-					privacy=set.privacy,
-					created=set.created,
-					updated=set.updated,
+					set_id=s.set_id,
+					owner=s.owner,
+					title=s.title,
+					description=s.description,
+					privacy=s.privacy,
+					created=s.created,
+					updated=s.updated,
 					post_id=post_id,
-					neighbors=PostNeighbors(
-						first=None,
-						last=None,
+					neighbors=SetNeighbors(
 						index=index,
-						before=[],
-						after=[],
+						before=await before,
+						after=await after,
 					),
 				)
 			)
@@ -459,7 +543,7 @@ class Sets(SqlInterface, Hashable) :
 				owner=row[1],
 				title=row[2],
 				description=row[3],
-				privacy=await self._id_to_privacy(row[4]),
+				privacy=await self._id_to_set_privacy(row[4]),
 				created=row[5],
 				updated=row[6],
 				count=0 if row[7] is None else row[7] + 1,  # set indices are 0-indexed, so add one
