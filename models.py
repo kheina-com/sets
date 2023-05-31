@@ -1,7 +1,7 @@
 from typing import Optional
 
-from fuzzly.models.post import PostId
-from fuzzly.models.set import SetId
+from fuzzly.models.post import PostId, PostIdValidator
+from fuzzly.models.set import SetId, SetIdValidator
 from fuzzly.models.user import UserPrivacy
 from pydantic import BaseModel, conint, conlist
 
@@ -21,6 +21,9 @@ class UpdateSetRequest(BaseModel) :
 
 
 class AddPostToSetRequest(BaseModel) :
+	_post_id_validator = PostIdValidator
+	_set_id_validator = SetIdValidator
+
 	post_id: PostId
 	set_id: SetId
 	index: conint(ge=0)
