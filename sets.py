@@ -277,8 +277,9 @@ class Sets(SqlInterface, Hashable) :
 			)
 			INSERT INTO kheina.public.set_post
 			(set_id, post_id, index)
-			VALUES
-			(%s, %s, i.index);
+			SELECT
+				%s, %s, i.index
+			FROM i;
 			""",
 			(
 				index, set_id.int(),
