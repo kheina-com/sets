@@ -43,8 +43,8 @@ async def i1Read(req: Request, set_id: SetId) -> InternalSet :
 
 ##################################################  PUBLIC  ##################################################
 
-@app.put('/v1/set', status_code=204)
-async def v1Create(req: Request, body: CreateSetRequest) -> None :
+@app.put('/v1/set')
+async def v1Create(req: Request, body: CreateSetRequest) -> Set :
 	await req.user.authenticated()
 	return await sets.create_set(req.user, body.title, body.privacy, body.description)
 

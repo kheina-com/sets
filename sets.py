@@ -68,7 +68,7 @@ class Sets(SqlInterface, Hashable) :
 
 
 	@HttpErrorHandler('creating a set')
-	async def create_set(self: 'Sets', user: KhUser, title: str, privacy: UserPrivacy, description: Optional[str]) :
+	async def create_set(self: 'Sets', user: KhUser, title: str, privacy: UserPrivacy, description: Optional[str]) -> Set :
 		set_id: SetId
 
 		while True :
@@ -109,6 +109,7 @@ class Sets(SqlInterface, Hashable) :
 		)
 
 		ensure_future(SetKVS.put_async(set_id, iset))
+		return await iset.set(client, user)
 
 
 	@AerospikeCache('kheina', 'sets', '{set_id}', _kvs=SetKVS)
@@ -444,7 +445,8 @@ class Sets(SqlInterface, Hashable) :
 			FROM kheina.public.sets
 				INNER JOIN kheina.public.set_post
 					ON set_post.set_id = sets.set_id
-			WHERE sets.owner = %s;
+			WHERE sets.owner = %s
+			GROUP BY sets.set_id;
 			""",
 			(owner,),
 			fetch_all=True,
