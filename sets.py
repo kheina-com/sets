@@ -469,18 +469,18 @@ class Sets(SqlInterface, Hashable) :
 					post_id=row[9],
 					title=row[10],
 					description=row[11],
-					rating=self._id_to_rating(row[12]),
+					rating=await self._id_to_rating(row[12]),
 					parent=row[13],
 					created=row[14],
 					updated=row[15],
 					filename=row[16],
-					media_type=self._id_to_media_type(row[17]),
+					media_type=await self._id_to_media_type(row[17]),
 					size=PostSize(
 						width=row[18],
 						height=row[19],
 					) if row[18] and row[19] else None,
 					user_id=row[20],
-					privacy=self._id_to_privacy(row[21]),
+					privacy=await self._id_to_privacy(row[21]),
 				),
 			))
 
