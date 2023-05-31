@@ -41,8 +41,6 @@ CREATE TABLE kheina.public.set_post (
 
 set_not_found_err: str = 'no data was found for the provided set id: {set_id}.'
 
-KVS: KeyValueStore = KeyValueStore('kheina', 'sets')
-
 client: InternalClient = InternalClient(fuzzly_client_token)
 
 
@@ -443,7 +441,7 @@ class Sets(SqlInterface, Hashable) :
 				sets.updated,
 				max(set_post.index)
 			FROM kheina.public.sets
-				INNER JOIN kheina.public.set_post
+				LEFT JOIN kheina.public.set_post
 					ON set_post.set_id = sets.set_id
 			WHERE sets.owner = %s
 			GROUP BY sets.set_id;
