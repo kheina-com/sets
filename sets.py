@@ -268,7 +268,7 @@ class Sets(SqlInterface, Hashable) :
 					least(%s, count(1)) AS index
 				FROM kheina.public.set_post
 					WHERE set_id = %s
-			), (
+			), _ AS (
 				UPDATE kheina.public.set_post
 					index = set_post.index + 1
 				WHERE set_post.set_id = %s
