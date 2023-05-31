@@ -164,7 +164,7 @@ class Sets(SqlInterface, Hashable) :
 
 	@HttpErrorHandler('retrieving set')
 	async def get_set(self: 'Sets', user: KhUser, set_id: SetId) -> Set :
-		iset: InternalSet = self._get_set(set_id)
+		iset: InternalSet = await self._get_set(set_id)
 
 		if await iset.authorized(client, user) :
 			return await iset.set(client, user)
@@ -459,7 +459,7 @@ class Sets(SqlInterface, Hashable) :
 				privacy=await self._id_to_privacy(row[4]),
 				created=row[5],
 				updated=row[6],
-				count=row[7] + 1,  # set indices are 0-indexed, so add one
+				count=0 if row[7] is None else row[7] + 1,  # set indices are 0-indexed, so add one
 			)
 			for row in data
 		]
