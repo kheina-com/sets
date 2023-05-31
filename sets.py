@@ -56,7 +56,7 @@ class Sets(SqlInterface, Hashable) :
 			SELECT
 				type
 			FROM kheina.public.privacy
-				where privacy.privacy_id = %s;
+			WHERE privacy.privacy_id = %s;
 			""",
 			(privacy_id,),
 			fetch_one=True,
@@ -70,8 +70,8 @@ class Sets(SqlInterface, Hashable) :
 		data: Tuple[str] = await self.query_async("""
 			SELECT
 				rating
-			FROM kheina.public.ratings;
-				where ratings.rating_id = %s;
+			FROM kheina.public.ratings
+			WHERE ratings.rating_id = %s;
 			""",
 			(rating_id,),
 			fetch_one=True,
@@ -89,8 +89,8 @@ class Sets(SqlInterface, Hashable) :
 			SELECT
 				file_type,
 				mime_type
-			FROM kheina.public.media_type;
-				where media_type.media_type_id = %s;
+			FROM kheina.public.media_type
+			WHERE media_type.media_type_id = %s;
 			""",
 			(media_type_id,),
 			fetch_one=True,
@@ -108,7 +108,7 @@ class Sets(SqlInterface, Hashable) :
 			SELECT
 				type
 			FROM kheina.public.privacy
-				where privacy.privacy_id = %s;
+			WHERE privacy.privacy_id = %s;
 			""",
 			(privacy_id,),
 			fetch_one=True,
