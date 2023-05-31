@@ -459,6 +459,7 @@ class Sets(SqlInterface, Hashable) :
 						privacy=await self._id_to_set_privacy(row[4]),
 						created=row[5],
 						updated=row[6],
+						count=0,  # we don't care
 					),
 				))
 
