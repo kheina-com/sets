@@ -271,6 +271,7 @@ class Sets(SqlInterface, Hashable) :
 			), _ AS (
 				UPDATE kheina.public.set_post
 					SET index = set_post.index + 1
+				FROM i
 				WHERE set_post.set_id = %s
 					AND set_post.index >= i.index
 			)
@@ -312,6 +313,7 @@ class Sets(SqlInterface, Hashable) :
 			)
 			UPDATE kheina.public.set_post
 				SET index = set_post.index - 1
+			FROM deleted
 			WHERE set_post.set_id = %s
 				AND set_post.index >= deleted.index;
 			""",
