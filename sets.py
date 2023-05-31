@@ -217,7 +217,7 @@ class Sets(SqlInterface, Hashable) :
 
 		data: Tuple[datetime] = await self.query_async(f"""
 			UPDATE kheina.public.sets
-				{query.join(', ')}
+				SET {query.join(', ')}
 			WHERE set_id = %s
 			RETURNING updated;
 			""",
@@ -270,7 +270,7 @@ class Sets(SqlInterface, Hashable) :
 					WHERE set_id = %s
 			), _ AS (
 				UPDATE kheina.public.set_post
-					index = set_post.index + 1
+					SET index = set_post.index + 1
 				WHERE set_post.set_id = %s
 					AND set_post.index >= i.index
 			)
@@ -311,7 +311,7 @@ class Sets(SqlInterface, Hashable) :
 				RETURNING index
 			)
 			UPDATE kheina.public.set_post
-				index = set_post.index - 1
+				SET index = set_post.index - 1
 			WHERE set_post.set_id = %s
 				AND set_post.index >= deleted.index;
 			""",
