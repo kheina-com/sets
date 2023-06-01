@@ -1,5 +1,6 @@
 from asyncio import Task, ensure_future, wait
 from collections import defaultdict
+from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
 from fuzzly.internal import InternalClient
@@ -45,6 +46,16 @@ client: InternalClient = InternalClient(fuzzly_client_token)
 
 
 class Sets(SqlInterface, Hashable) :
+
+	def __init__(self: 'Sets') -> None :
+		SqlInterface.__init__(
+			self,
+			conversions={
+				Enum: lambda x: x.name,
+			},
+		)
+		Hashable.__init__(self)
+
 
 	async def _verify_authorized(user: KhUser, iset: InternalSet) -> bool :
 		return user.user_id == iset.set_id or await user.verify_scope(Scope.mod, raise_error=False)
