@@ -236,24 +236,27 @@ class Sets(SqlInterface, Hashable) :
 		query: List[str] = []
 
 		for m in req.mask :
-			query.append(m + ' = %s')
 
 			if m == 'owner' :
 				owner: int = await client.user_handle_to_id(req.owner)
 				params.append(owner)
 				iset.owner = owner
+				query.append(m + ' = %s')
 
 			elif m == 'title' :
 				params.append(req.title)
 				iset.title = req.title
+				query.append(m + ' = %s')
 
 			elif m == 'description' :
 				params.append(req.description)
 				iset.description = req.description
+				query.append(m + ' = %s')
 
 			elif m == 'privacy' :
-				params.append(req.privacy.name)
+				params.append(req.privacy)
 				iset.privacy = req.privacy
+				query.append(m + ' = privacy_to_id(%s)')
 
 			else :
 				bad_mask.append(m)
