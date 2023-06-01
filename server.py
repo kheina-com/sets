@@ -24,6 +24,13 @@ app = ServerApp(
 		'dev.fuzz.ly',
 		'fuzz.ly',
 	],
+	allowed_methods=[
+		'GET',
+		'PUT',
+		'POST',
+		'PATCH',
+		'DELETE',
+	],
 )
 sets = Sets()
 
