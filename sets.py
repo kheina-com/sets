@@ -263,13 +263,13 @@ class Sets(SqlInterface, Hashable) :
 				raise BadRequest(f'[{bad_mask[0]}] is not a valid mask value')
 
 			else :
-				raise BadRequest(f'[{bad_mask.join(", ")}] are not valid mask values')
+				raise BadRequest(f'[{", ".join(bad_mask)}] are not valid mask values')
 
 		params.append(set_id.int())
 
 		data: Tuple[datetime] = await self.query_async(f"""
 			UPDATE kheina.public.sets
-				SET {query.join(', ')}
+				SET {', '.join(query)}
 			WHERE set_id = %s
 			RETURNING updated;
 			""",
