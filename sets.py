@@ -182,13 +182,13 @@ class Sets(SqlInterface, Hashable) :
 				SELECT post_id AS first, index
 				FROM kheina.public.set_post
 				WHERE set_id = %s
-				ORDER BY set_post.index ASCENDING
+				ORDER BY set_post.index ASC
 				LIMIT 1
 			), l AS (
 				SELECT post_id AS last, index
 				FROM kheina.public.set_post
 				WHERE set_id = %s
-				ORDER BY set_post.index DESCENDING
+				ORDER BY set_post.index DESC
 				LIMIT 1
 			)
 			SELECT
@@ -423,13 +423,13 @@ class Sets(SqlInterface, Hashable) :
 				SELECT set_post.set_id, post_id AS first, index
 				FROM kheina.public.set_post
 				WHERE set_id = post_sets.set_id
-				ORDER BY set_post.index ASCENDING
+				ORDER BY set_post.index ASC
 				LIMIT 1
 			), l AS (
 				SELECT set_post.set_id, post_id AS last, index
 				FROM kheina.public.set_post
 				WHERE set_id = post_sets.set_id
-				ORDER BY set_post.index DESCENDING
+				ORDER BY set_post.index DESC
 				LIMIT 1
 			)
 			SELECT
@@ -576,13 +576,13 @@ class Sets(SqlInterface, Hashable) :
 				SELECT set_post.set_id, post_id AS first, index
 				FROM kheina.public.set_post
 				WHERE set_id = post_sets.set_id
-				ORDER BY set_post.index ASCENDING
+				ORDER BY set_post.index ASC
 				LIMIT 1
 			), l AS (
 				SELECT set_post.set_id, post_id AS last, index
 				FROM kheina.public.set_post
 				WHERE set_id = post_sets.set_id
-				ORDER BY set_post.index DESCENDING
+				ORDER BY set_post.index DESC
 				LIMIT 1
 			)
 			""",
