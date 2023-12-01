@@ -420,14 +420,14 @@ class Sets(SqlInterface, Hashable) :
 						ON sets.set_id = set_post.set_id
 				WHERE set_post.post_id = %s
 			), f AS (
-				SELECT set_post.set_id, post_id AS first, index
+				SELECT set_post.set_id, set_post.post_id AS first, set_post.index
 				FROM post_sets
 					INNER JOIN kheina.public.set_post
 						ON set_post.set_id = post_sets.set_id
 				ORDER BY set_post.index ASC
 				LIMIT 1
 			), l AS (
-				SELECT set_post.set_id, post_id AS last, index
+				SELECT set_post.set_id, set_post.post_id AS last, set_post.index
 				FROM post_sets
 					INNER JOIN kheina.public.set_post
 						ON set_post.set_id = post_sets.set_id
