@@ -467,8 +467,6 @@ class Sets(SqlInterface, Hashable) :
 					AND set_post.index != post_sets.index
 				INNER JOIN kheina.public.posts
 					ON posts.post_id = set_post.post_id
-				INNER JOIN first
-					ON posts.post_id = set_post.post_id
 				INNER JOIN f
 					ON f.set_id = post_sets.set_id
 				INNER JOIN l
