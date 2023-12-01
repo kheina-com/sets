@@ -202,8 +202,10 @@ class Sets(SqlInterface, Hashable) :
 				l.last,
 				l.index
 			FROM kheina.public.sets
-				JOIN f
-				JOIN l
+				INNER JOIN f
+					ON true
+				INNER JOIN l
+					ON true
 			WHERE sets.set_id = %s;
 			""",
 			(set_id.int(), set_id.int(), set_id.int()),
