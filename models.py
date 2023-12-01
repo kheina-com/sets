@@ -3,11 +3,11 @@ from typing import Optional
 from fuzzly.models.post import PostId, PostIdValidator
 from fuzzly.models.set import SetId, SetIdValidator
 from fuzzly.models.user import UserPrivacy
-from pydantic import BaseModel, conint, conlist
+from pydantic import BaseModel, conint, conlist, constr
 
 
 class CreateSetRequest(BaseModel) :
-	title: str
+	title: constr(max_length=50)
 	description: Optional[str]
 	privacy: UserPrivacy
 
@@ -15,7 +15,7 @@ class CreateSetRequest(BaseModel) :
 class UpdateSetRequest(BaseModel) :
 	mask: conlist(str, min_items=1)
 	owner: Optional[str]
-	title: Optional[str]
+	title: Optional[constr(max_length=50)]
 	description: Optional[str]
 	privacy: Optional[UserPrivacy]
 

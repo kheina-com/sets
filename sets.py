@@ -4,9 +4,9 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
 from fuzzly.internal import InternalClient
-from fuzzly.models.internal import InternalPost, InternalSet, SetKVS, InternalPosts
-from fuzzly.models.post import PostId, Privacy, Rating, MediaType, PostSize, Post
-from fuzzly.models.set import SetNeighbors, PostSet, Set, SetId
+from fuzzly.models.internal import InternalPost, InternalPosts, InternalSet, SetKVS
+from fuzzly.models.post import MediaType, Post, PostId, PostSize, Privacy, Rating
+from fuzzly.models.set import PostSet, Set, SetId, SetNeighbors
 from fuzzly.models.user import UserPrivacy
 from kh_common.auth import KhUser, Scope
 from kh_common.caching import AerospikeCache, ArgsCache
@@ -52,6 +52,8 @@ class Sets(SqlInterface, Hashable) :
 			self,
 			conversions={
 				Enum: lambda x: x.name,
+				PostId: int,
+				SetId: int,
 			},
 		)
 		Hashable.__init__(self)
@@ -280,6 +282,7 @@ class Sets(SqlInterface, Hashable) :
 				raise BadRequest(f'[{", ".join(bad_mask)}] are not valid mask values')
 
 		params.append(set_id.int())
+		query.append('updated = now()')
 
 		data: Tuple[datetime] = await self.query_async(f"""
 			UPDATE kheina.public.sets
@@ -309,7 +312,7 @@ class Sets(SqlInterface, Hashable) :
 			DELETE FROM kheina.public.sets
 			WHERE set_id = %s;
 			""",
-			(set_id, set_id),
+			(set_id.int(), set_id.int()),
 			commit=True,
 		)
 
@@ -416,6 +419,18 @@ class Sets(SqlInterface, Hashable) :
 					INNER JOIN kheina.public.sets
 						ON sets.set_id = set_post.set_id
 				WHERE set_post.post_id = %s
+			), f AS (
+				SELECT set_post.set_id, post_id AS first, index
+				FROM kheina.public.set_post
+				WHERE set_id = post_sets.set_id
+				ORDER BY set_post.index ASCENDING
+				LIMIT 1
+			), l AS (
+				SELECT set_post.set_id, post_id AS last, index
+				FROM kheina.public.set_post
+				WHERE set_id = post_sets.set_id
+				ORDER BY set_post.index DESCENDING
+				LIMIT 1
 			)
 			SELECT
 				post_sets.set_id,
@@ -439,14 +454,23 @@ class Sets(SqlInterface, Hashable) :
 				posts.width,
 				posts.height,
 				posts.uploader,
-				posts.privacy_id
+				posts.privacy_id,
+				f.first,
+				l.last,
+				l.index
 			FROM post_sets
 				INNER JOIN kheina.public.set_post
 					ON set_post.set_id = post_sets.set_id
 					AND set_post.index BETWEEN post_sets.index - %s AND post_sets.index + %s
 					AND set_post.index != post_sets.index
 				INNER JOIN kheina.public.posts
-					ON posts.post_id = set_post.post_id;
+					ON posts.post_id = set_post.post_id
+				INNER JOIN first
+					ON posts.post_id = set_post.post_id
+				INNER JOIN f
+					ON f.set_id = post_sets.set_id
+				INNER JOIN l
+					ON l.set_id = post_sets.set_id
 			""",
 			(
 				post_id.int(),
@@ -473,7 +497,9 @@ class Sets(SqlInterface, Hashable) :
 						privacy=await self._id_to_set_privacy(row[4]),
 						created=row[5],
 						updated=row[6],
-						count=0,  # we don't care
+						first=row[22],
+						last=row[23],
+						count=row[24] + 1,
 					),
 				))
 
@@ -518,7 +544,9 @@ class Sets(SqlInterface, Hashable) :
 					privacy=s.privacy,
 					created=s.created,
 					updated=s.updated,
-					post_id=post_id,
+					count=s.count,
+					first=s.first,
+					last=s.last,
 					neighbors=SetNeighbors(
 						index=index,
 						before=await before,
@@ -533,20 +561,30 @@ class Sets(SqlInterface, Hashable) :
 	async def get_user_sets(self: 'Sets', user: KhUser, handle: str) -> List[Set] :
 		owner: int = await client.user_handle_to_id(handle)
 		data: List[Tuple[int, int, Optional[str], Optional[str], int, datetime, datetime]] = await self.query_async("""
-			SELECT
-				sets.set_id,
-				sets.owner,
-				sets.title,
-				sets.description,
-				sets.privacy,
-				sets.created,
-				sets.updated,
-				max(set_post.index)
-			FROM kheina.public.sets
-				LEFT JOIN kheina.public.set_post
-					ON set_post.set_id = sets.set_id
-			WHERE sets.owner = %s
-			GROUP BY sets.set_id;
+			WITH user_sets AS (
+				SELECT
+					sets.set_id,
+					sets.owner,
+					sets.title,
+					sets.description,
+					sets.privacy,
+					sets.created,
+					sets.updated
+				FROM kheina.public.sets
+				WHERE sets.owner = %s
+			), f AS (
+				SELECT set_post.set_id, post_id AS first, index
+				FROM kheina.public.set_post
+				WHERE set_id = post_sets.set_id
+				ORDER BY set_post.index ASCENDING
+				LIMIT 1
+			), l AS (
+				SELECT set_post.set_id, post_id AS last, index
+				FROM kheina.public.set_post
+				WHERE set_id = post_sets.set_id
+				ORDER BY set_post.index DESCENDING
+				LIMIT 1
+			)
 			""",
 			(owner,),
 			fetch_all=True,
