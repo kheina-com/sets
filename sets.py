@@ -421,14 +421,16 @@ class Sets(SqlInterface, Hashable) :
 				WHERE set_post.post_id = %s
 			), f AS (
 				SELECT set_post.set_id, post_id AS first, index
-				FROM kheina.public.set_post
-				WHERE set_id = post_sets.set_id
+				FROM post_sets
+					INNER JOIN kheina.public.set_post
+						ON set_id = post_sets.set_id
 				ORDER BY set_post.index ASC
 				LIMIT 1
 			), l AS (
 				SELECT set_post.set_id, post_id AS last, index
-				FROM kheina.public.set_post
-				WHERE set_id = post_sets.set_id
+				FROM post_sets
+					INNER JOIN kheina.public.set_post
+						ON set_id = post_sets.set_id
 				ORDER BY set_post.index DESC
 				LIMIT 1
 			)
@@ -560,6 +562,7 @@ class Sets(SqlInterface, Hashable) :
 
 	async def get_user_sets(self: 'Sets', user: KhUser, handle: str) -> List[Set] :
 		owner: int = await client.user_handle_to_id(handle)
+		# TODO: THIS QUERY IS BROKEN DUE TO `post_sets`
 		data: List[Tuple[int, int, Optional[str], Optional[str], int, datetime, datetime]] = await self.query_async("""
 			WITH user_sets AS (
 				SELECT
