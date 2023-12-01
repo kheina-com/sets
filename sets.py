@@ -206,7 +206,7 @@ class Sets(SqlInterface, Hashable) :
 				JOIN l
 			WHERE sets.set_id = %s;
 			""",
-			(set_id.int(), set_id.int()),
+			(set_id.int(), set_id.int(), set_id.int()),
 			fetch_one=True,
 		)
 
