@@ -204,7 +204,7 @@ class Sets(SqlInterface, Hashable) :
 			FROM kheina.public.sets
 				JOIN f
 				JOIN l
-			WHERE set_id = %s;
+			WHERE sets.set_id = %s;
 			""",
 			(set_id.int(), set_id.int()),
 			fetch_one=True,
